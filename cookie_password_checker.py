@@ -21,7 +21,7 @@ def banner():
    ░   ░ ░  ░ ░   ░░         ░ ░    ░   ▒   ▒ ▒ ░░
          ░                     ░  ░     ░  ░░ ░
                                             ░ ░''' + Fore.RED + Style.DIM + '''
-                                 n5za''' + Style.RESET_ALL)
+                                github: n5za''' + Style.RESET_ALL)
 
 
 def parse_cookie_file(path):

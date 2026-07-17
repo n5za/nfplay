@@ -11,11 +11,17 @@ HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 def banner():
     os.system('cls' if os.name == 'nt' else 'clear')
     print(Fore.RED + Style.BRIGHT + r'''
-    ╔══════════════════════════════════════════════╗
-    ║          NETFLIX COOKIE CHECKER v1.0         ║
-    ║           Password Status Scanner             ║
-    ╚══════════════════════════════════════════════╝
-    ''' + Style.RESET_ALL)
+ ███▄    █   █████▒██▓███   ██▓    ▄▄▄     ▓██   ██▓
+ ██ ▀█   █ ▓██   ▒▓██░  ██▒▓██▒   ▒████▄    ▒██  ██▒
+▓██  ▀█ ██▒▒████ ░▓██░ ██▓▒▒██░   ▒██  ▀█▄   ▒██ ██░
+▓██▒  ▐▌██▒░▓█▒  ░▒██▄█▓▒ ▒▒██░   ░██▄▄▄▄██  ░ ▐██▓░
+▒██░   ▓██░░▒█░   ▒██▒ ░  ░░██████▒▓█   ▓██▒ ░ ██▒▓░
+░ ▒░   ▒ ▒  ▒ ░   ▒▓▒░ ░  ░░ ▒░▓  ░▒▒   ▓▒█░  ██▒▒▒
+░ ░░   ░ ▒░ ░     ░▒ ░     ░ ░ ▒  ░ ▒   ▒▒ ░▓██ ░▒░
+   ░   ░ ░  ░ ░   ░░         ░ ░    ░   ▒   ▒ ▒ ░░
+         ░                     ░  ░     ░  ░░ ░
+                                            ░ ░''' + Fore.RED + Style.DIM + '''
+                                 n5za''' + Style.RESET_ALL)
 
 
 def parse_cookie_file(path):

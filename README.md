@@ -1,6 +1,15 @@
-# Netflix Cookie Password Checker
+<p align="center">
+  <img src="screenshot.png" alt="nfplay">
+</p>
 
-A Python tool that scans Netflix cookie files and identifies accounts without a password set. When an account has no password, the `/password` page shows `newPassword` and `confirmNewPassword` fields **without** a `currentPassword` field — meaning you can set a password without needing the old one.
+<br>
+
+<p align="center">
+  <b>Netflix Cookie Password Scanner</b><br>
+  Scan Netflix cookie files and instantly detect accounts with no password set.
+</p>
+
+<br>
 
 ## Features
 
@@ -216,24 +225,6 @@ File names like `[Premium] [1 payments] [extra false] [US] [user@gmail.com].txt`
 4. Checks the page JSON for `newPassword` and `currentPassword` fields
 5. **GOOD** = `newPassword` present, `currentPassword` absent (no password set)
 6. **BAD** = both present (account has a password)
-
-## Output
-
-```
-    ╔══════════════════════════════════════════════╗
-    ║          NETFLIX COOKIE CHECKER v1.0         ║
-    ║           Password Status Scanner             ║
-    ╚══════════════════════════════════════════════╝
-
-📊 Loaded 106 cookie files [Premium]
-  ✓ #  1 GOOD  | user@gmail.com                   | Premium | US
-  [██████████████████████████████] 100%  [106/106]  ✔13  ✘93  💀0  !0
-
-  ✅ CHECK COMPLETE
-  ✔ GOOD (no password) : 13
-  ✘ BAD (has password) : 93
-  ⏱ Time              : 171s (2.8min)
-```
 
 ## Notes
 

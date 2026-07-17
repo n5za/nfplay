@@ -1,5 +1,7 @@
 <div align="center">
   <img src="image.png" alt="nfplay" width="720">
+   <img width="682" height="514" alt="image" src="https://github.com/user-attachments/assets/1fdc86f2-a323-4920-a7c5-f77b21349540" />
+
 </div>
 
 <br>

@@ -14,18 +14,154 @@ A Python tool that scans Netflix cookie files and identifies accounts without a 
 ## Requirements
 
 - Python 3.8+
-- `requests`
-- `colorama`
+- `requests` library
+- `colorama` library
 
-```bash
+## Installation
+
+### Windows
+
+**Step 1 — Install Python**
+Download and install Python from https://www.python.org/downloads/
+**Make sure to check "Add Python to PATH" during installation.**
+
+**Step 2 — Download the tool**
+```
+git clone https://github.com/n5za/nfplay.git
+cd nfplay
+```
+Or download the ZIP from https://github.com/n5za/nfplay and extract it.
+
+**Step 3 — Install dependencies**
+Open **Command Prompt (cmd)** or **PowerShell** in the tool folder and run:
+```
 pip install requests colorama
 ```
 
-## Usage
+**Step 4 — Run**
+```
+python cookie_password_checker.py
+```
 
-```bash
+---
+
+### Linux (Debian / Ubuntu / Mint)
+
+**Step 1 — Install Python and Git**
+Open **Terminal** and run:
+```
+sudo apt update
+sudo apt install python3 python3-pip git -y
+```
+
+**Step 2 — Download the tool**
+```
+git clone https://github.com/n5za/nfplay.git
+cd nfplay
+```
+
+**Step 3 — Install dependencies**
+```
+pip3 install requests colorama
+```
+
+**Step 4 — Run**
+```
 python3 cookie_password_checker.py
 ```
+
+---
+
+### Linux (Arch / Manjaro)
+
+**Step 1 — Install Python and Git**
+```
+sudo pacman -S python python-pip git --noconfirm
+```
+
+**Step 2 — Download the tool**
+```
+git clone https://github.com/n5za/nfplay.git
+cd nfplay
+```
+
+**Step 3 — Install dependencies**
+```
+pip install requests colorama
+```
+
+**Step 4 — Run**
+```
+python cookie_password_checker.py
+```
+
+---
+
+### macOS
+
+**Step 1 — Install Homebrew (if not already installed)**
+Open **Terminal** and run:
+```
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+**Step 2 — Install Python and Git**
+```
+brew install python git
+```
+
+**Step 3 — Download the tool**
+```
+git clone https://github.com/n5za/nfplay.git
+cd nfplay
+```
+
+**Step 4 — Install dependencies**
+```
+pip3 install requests colorama
+```
+
+**Step 5 — Run**
+```
+python3 cookie_password_checker.py
+```
+
+---
+
+### Termux (Android)
+
+**Step 1 — Install dependencies**
+Open **Termux** and run:
+```
+pkg update && pkg upgrade -y
+pkg install python git -y
+```
+
+**Step 2 — Download the tool**
+```
+git clone https://github.com/n5za/nfplay.git
+cd nfplay
+```
+
+**Step 3 — Install dependencies**
+```
+pip install requests colorama
+```
+
+**Step 4 — Run**
+```
+python cookie_password_checker.py
+```
+
+---
+
+## Usage
+
+Run the tool:
+```bash
+python cookie_password_checker.py
+```
+(Use `python3` instead of `python` on Linux/macOS if `python` is not found.)
 
 You'll be prompted to enter the cookies folder path:
 

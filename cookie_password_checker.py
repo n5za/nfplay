@@ -94,7 +94,7 @@ def main():
     FILTER = None
     if len(sys.argv) > 2 and sys.argv[2] != '__all__':
         FILTER = sys.argv[2]
-    else:
+    elif not (len(sys.argv) > 2 and sys.argv[2] == '__all__'):
         print()
         print(Fore.CYAN + 'Select plan to scan:' + Style.RESET_ALL)
         for k, v in PLAN_OPTIONS.items():

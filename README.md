@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="screenshot.png" alt="nfplay" width="720">
+  <img src="image.png" alt="nfplay" width="720">
 </div>
 
 <br>

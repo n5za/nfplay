@@ -90,12 +90,27 @@ def main():
             print(Fore.RED + '❌ No path provided.' + Style.RESET_ALL)
             sys.exit(1)
 
-    FILTER = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] != '__all__' else None
+    PLAN_OPTIONS = {'1': 'Basic', '2': 'Standard', '3': 'Premium'}
+    FILTER = None
+    if len(sys.argv) > 2 and sys.argv[2] != '__all__':
+        FILTER = sys.argv[2]
+    else:
+        print()
+        print(Fore.CYAN + 'Select plan to scan:' + Style.RESET_ALL)
+        for k, v in PLAN_OPTIONS.items():
+            print(Fore.WHITE + f'  {k}. {v}' + Style.RESET_ALL)
+        print(Fore.WHITE + '  4. All (scan everything)' + Style.RESET_ALL)
+        choice = input(Fore.YELLOW + '  > ' + Style.RESET_ALL).strip()
+        if choice in PLAN_OPTIONS:
+            FILTER = PLAN_OPTIONS[choice]
+
     BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'results-password')
     if len(sys.argv) > 3:
         OUTPUT_DIR = sys.argv[3]
     else:
         folder_name = os.path.basename(os.path.normpath(COOKIES_DIR))
+        if FILTER:
+            folder_name = FILTER.lower().replace(' ', '-')
         OUTPUT_DIR = os.path.join(BASE_DIR, folder_name)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 

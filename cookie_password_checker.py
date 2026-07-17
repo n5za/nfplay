@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os, sys, re, glob, json, time
+import os, sys, re, glob, json, time, shutil
 import requests
 from colorama import init, Fore, Back, Style
 
@@ -132,6 +132,8 @@ def main():
     good_file = os.path.join(OUTPUT_DIR, 'good_no_password.txt')
     bad_file = os.path.join(OUTPUT_DIR, 'bad_has_password.txt')
     dead_file = os.path.join(OUTPUT_DIR, 'dead.txt')
+    good_cookies_dir = os.path.join(OUTPUT_DIR, 'good_cookies')
+    os.makedirs(good_cookies_dir, exist_ok=True)
 
     stats = {'good': 0, 'bad': 0, 'dead': 0, 'error': 0}
     t0 = time.time()
@@ -154,6 +156,7 @@ def main():
             stats['good'] += 1
             with open(good_file, 'a') as f:
                 f.write(line + '\n')
+            shutil.copy2(fpath, os.path.join(good_cookies_dir, os.path.basename(fpath)))
             print(Fore.GREEN + Style.BRIGHT + f'  ✓ #{stats["good"]:>3} GOOD  | {email or label:35s} | {plan:5s} | {country}' + Style.RESET_ALL, flush=True)
 
         elif status == 'BAD':
@@ -196,7 +199,8 @@ def main():
     print(Fore.WHITE + f'  ⏱ Time              : {elapsed:.0f}s ({elapsed/60:.1f}min)' + Style.RESET_ALL)
     print(Fore.WHITE + f'  ⚡ Rate              : {len(files)/elapsed*60:.0f} accounts/min' + Style.RESET_ALL)
     print()
-    print(Fore.CYAN + f'  📁 GOOD cookies: {OUTPUT_DIR}/good_no_password.txt' + Style.RESET_ALL)
+    print(Fore.CYAN + f'  📁 GOOD list : {OUTPUT_DIR}/good_no_password.txt' + Style.RESET_ALL)
+    print(Fore.CYAN + f'  📁 GOOD files : {good_cookies_dir}/' + Style.RESET_ALL)
     print(Fore.CYAN + '═' * 55 + Style.RESET_ALL)
 
 

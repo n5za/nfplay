@@ -91,7 +91,12 @@ def main():
             sys.exit(1)
 
     FILTER = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] != '__all__' else None
-    OUTPUT_DIR = sys.argv[3] if len(sys.argv) > 3 else os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'results-password')
+    BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'results-password')
+    if len(sys.argv) > 3:
+        OUTPUT_DIR = sys.argv[3]
+    else:
+        folder_name = os.path.basename(os.path.normpath(COOKIES_DIR))
+        OUTPUT_DIR = os.path.join(BASE_DIR, folder_name)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     # ── LOAD FILES ──

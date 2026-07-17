@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="screenshot.png" alt="nfplay">
+  <img src="image.png" alt="nfplay">
 </p>
 
 <br>

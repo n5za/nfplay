@@ -108,6 +108,24 @@ python netflix_login.py 2         # direct select
 
 ---
 
+### 🟢 google_cookie_checker.py
+Scans Google cookie files and identifies **alive accounts**.
+
+```
+📊 Loaded 15 cookie files
+  ✅ #  1 GOOD  | user@gmail.com
+  [██████████████████████████████] 100%  ✅1  💀14  !0
+```
+
+- Tests cookies against `myaccount.google.com`
+- Proxy protection (default on, `--no-proxy` to disable)
+- Saves alive cookies to `good_cookies/`
+
+```bash
+python google_cookie_checker.py ./Cookies            # scan Google cookies
+python google_cookie_checker.py ./Cookies --no-proxy # direct IP
+```
+
 ## How cookie_password_checker works
 
 | Step | Action |

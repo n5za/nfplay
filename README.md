@@ -40,7 +40,8 @@ python cookie_password_checker.py ./Cookies Premium  # direct
 ```
 
 ---
-
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/n5za/nfplay/blob/main/img/2.png">
+  <img src="/img/2.png" alt="nfplay" width="100%">
 ### 🚀 netflix_login.py
 Select a GOOD account and open it directly in Brave — **cookies injected automatically**.
 

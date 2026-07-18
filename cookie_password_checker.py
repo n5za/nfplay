@@ -145,15 +145,11 @@ def main():
         i += 1
 
     if not COOKIES_DIR:
-        if os.path.isdir('Cookies'):
-            COOKIES_DIR = 'Cookies'
-            print(Fore.CYAN + f'📁 Using default folder: {COOKIES_DIR}' + Style.RESET_ALL)
-        else:
-            print(Fore.CYAN + '📁 Enter cookies folder path:' + Style.RESET_ALL)
-            COOKIES_DIR = input(Fore.YELLOW + '  > ' + Style.RESET_ALL).strip()
-            if not COOKIES_DIR:
-                print(Fore.RED + '❌ No path provided.' + Style.RESET_ALL)
-                sys.exit(1)
+        print(Fore.CYAN + '📁 Enter cookies folder path:' + Style.RESET_ALL)
+        COOKIES_DIR = input(Fore.YELLOW + '  > ' + Style.RESET_ALL).strip()
+        if not COOKIES_DIR:
+            print(Fore.RED + '❌ No path provided.' + Style.RESET_ALL)
+            sys.exit(1)
 
     PLAN_OPTIONS = {'1': 'Basic', '2': 'Standard', '3': 'Premium'}
     if not FILTER:

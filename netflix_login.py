@@ -213,41 +213,54 @@ def main():
     print(Fore.CYAN + f'\n  ✅ {len(alive)} alive accounts' + Style.RESET_ALL)
     if rotator.proxies:
         print(Fore.CYAN + f'  🌐 {len(rotator.proxies)} proxies loaded  🔄 {proxy_switches} switches' + Style.RESET_ALL)
-    print()
-
-    for i, f in enumerate(alive):
-        email, plan, country = parse_meta(f)
-        print(Fore.WHITE + f'  {i+1:>2}. {email:35s} | {plan:15s} | {country}' + Style.RESET_ALL)
 
     open_flag = '--open' in sys.argv or '-o' in sys.argv
-    idx = -1
-
+    first_sel = None
     for arg in sys.argv[1:]:
         if arg in ('--open', '-o'):
             continue
         try:
-            idx = int(arg) - 1
+            first_sel = int(arg) - 1
         except:
             pass
 
-    if idx < 0:
+    if first_sel is not None and 0 <= first_sel < len(alive):
+        select_and_open(alive[first_sel], open_flag)
+        return
+
+    while True:
         print()
-        choice = input('  Select account: ').strip()
+        for i, f in enumerate(alive):
+            email, plan, country = parse_meta(f)
+            print(Fore.WHITE + f'  {i+1:>2}. {email:35s} | {plan:15s} | {country}' + Style.RESET_ALL)
+        print(Fore.WHITE + '  q. Quit' + Style.RESET_ALL)
+
+        print()
+        choice = input('  Select account: ').strip().lower()
+
+        if choice in ('q', 'x', 'quit', 'exit'):
+            print(Fore.YELLOW + '\n  👋 Goodbye!' + Style.RESET_ALL)
+            break
+
         try:
             idx = int(choice) - 1
         except:
-            pass
+            print(Fore.RED + '  ❌ Invalid selection' + Style.RESET_ALL)
+            continue
 
-    if idx < 0 or idx >= len(alive):
-        print(Fore.RED + '  ❌ Invalid selection' + Style.RESET_ALL)
-        sys.exit(1)
+        if idx < 0 or idx >= len(alive):
+            print(Fore.RED + '  ❌ Invalid selection' + Style.RESET_ALL)
+            continue
 
-    selected = alive[idx]
-    email, plan, country = parse_meta(selected)
-    shutil.copy2(selected, OUTPUT_FILE)
+        select_and_open(alive[idx], open_flag)
+
+
+def select_and_open(fpath, open_flag):
+    email, plan, country = parse_meta(fpath)
+    shutil.copy2(fpath, OUTPUT_FILE)
 
     print(f'\n  ✅ Cookie saved → {OUTPUT_FILE}')
-    nfid, snfid = extract_ids(selected)
+    nfid, snfid = extract_ids(fpath)
     if nfid:
         print(f'  📋 NetflixId:       {nfid[:60]}...')
     if snfid:
@@ -257,11 +270,12 @@ def main():
 
     if open_flag:
         print('\n  🚀 Opening Brave...')
-        cookies = build_alive_cookies(selected)
+        cookies = build_alive_cookies(fpath)
         if cookies:
             open_brave(cookies)
     else:
-        print('\n  💡 Use --open N to launch in Brave automatically')
+        print('\n  💡 Use --open to launch in Brave automatically')
+    print(Fore.CYAN + '\n  ──' + Style.RESET_ALL)
 
 
 if __name__ == '__main__':

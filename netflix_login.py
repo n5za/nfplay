@@ -92,6 +92,7 @@ def open_brave(cookies):
         cdp = page.context.new_cdp_session(page)
         cdp.send('Network.setCookies', {'cookies': cookies})
         page.goto('https://www.netflix.com/browse', wait_until='domcontentloaded')
+        page.close()
 
 def build_alive_cookies(path):
     nfid, snfid = extract_ids(path)

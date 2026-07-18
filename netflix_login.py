@@ -62,17 +62,13 @@ def open_brave(cookies):
     PORT = 9222
     DATA_DIR = os.path.expanduser('~/.config/BraveSoftware/Brave-Browser')
 
-    try:
-        import urllib.request
-        urllib.request.urlopen(f'http://127.0.0.1:{PORT}/json/version', timeout=2)
-    except:
-        subprocess.run(['pkill', '-x', 'brave'], capture_output=True)
-        time.sleep(1)
-        subprocess.Popen(
-            [BRAVE, f'--remote-debugging-port={PORT}', f'--user-data-dir={DATA_DIR}',
-             '--no-first-run'],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
+    subprocess.run(['pkill', '-x', 'brave'], capture_output=True)
+    time.sleep(1)
+    subprocess.Popen(
+        [BRAVE, f'--remote-debugging-port={PORT}', f'--user-data-dir={DATA_DIR}',
+         '--no-first-run'],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
 
     for _ in range(60):
         try:

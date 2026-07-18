@@ -67,7 +67,7 @@ def open_brave(cookies):
 
     proc = subprocess.Popen(
         [BRAVE, f'--remote-debugging-port={PORT}', f'--user-data-dir={DATA_DIR}',
-         '--no-first-run', '--new-window', 'about:blank'],
+         '--no-first-run'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
 

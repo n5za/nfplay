@@ -73,9 +73,9 @@ Scans Netflix cookie files and identifies accounts with **no password set**.
 
 ```bash
 pip install requests colorama
-python cookie_password_checker.py                            # interactive
-python cookie_password_checker.py ./Cookies Premium         # direct
-python cookie_password_checker.py ./Cookies --auto-proxy    # rotate free proxies
+python cookie_password_checker.py                            # interactive + proxy default
+python cookie_password_checker.py ./Cookies Premium         # direct mode
+python cookie_password_checker.py ./Cookies --no-proxy      # use direct IP only
 python cookie_password_checker.py ./Cookies --proxy-file list.txt  # your proxies
 ```
 

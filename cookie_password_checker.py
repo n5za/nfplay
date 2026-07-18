@@ -125,14 +125,14 @@ def main():
     COOKIES_DIR = None
     FILTER = None
     OUTPUT_DIR = None
-    auto_proxy = False
+    auto_proxy = True
     proxy_file = None
 
     i = 0
     while i < len(args):
         a = args[i]
-        if a == '--auto-proxy':
-            auto_proxy = True
+        if a == '--no-proxy':
+            auto_proxy = False
         elif a == '--proxy-file' and i + 1 < len(args):
             proxy_file = args[i + 1]
             i += 1

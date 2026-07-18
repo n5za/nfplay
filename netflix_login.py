@@ -87,21 +87,23 @@ def open_brave(cookies):
 
     with sync_playwright() as p:
         browser = p.chromium.connect_over_cdp(f'http://127.0.0.1:{PORT}')
-        ctx = browser.contexts[0]
-        ctx.add_cookies(cookies)
-        page = ctx.new_page()
+        page = browser.new_page()
+        page.context.clear_cookies()
+        cdp = page.context.new_cdp_session(page)
+        cdp.send('Network.setCookies', {'cookies': cookies})
         page.goto('https://www.netflix.com/browse', wait_until='domcontentloaded')
 
 def build_alive_cookies(path):
     nfid, snfid = extract_ids(path)
     if not nfid:
         return None
-    email, plan, country = parse_meta(path)
     return [
-        {'domain': '.netflix.com', 'name': 'NetflixId', 'value': nfid,
-         'path': '/', 'secure': True, 'httpOnly': True, 'sameSite': 'Lax'},
-        {'domain': '.netflix.com', 'name': 'SecureNetflixId', 'value': snfid or '',
-         'path': '/', 'secure': True, 'httpOnly': True, 'sameSite': 'Lax'},
+        {'name': 'NetflixId', 'value': nfid,
+         'url': 'https://www.netflix.com',
+         'secure': True, 'httpOnly': True, 'sameSite': 'Lax'},
+        {'name': 'SecureNetflixId', 'value': snfid or '',
+         'url': 'https://www.netflix.com',
+         'secure': True, 'httpOnly': True, 'sameSite': 'Lax'},
     ]
 
 def main():

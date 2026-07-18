@@ -55,21 +55,26 @@ def extract_ids(path):
     return nfid, snfid
 
 def open_brave(cookies):
-    import subprocess, time
+    import subprocess, time, os
     from playwright.sync_api import sync_playwright
 
     BRAVE = '/usr/bin/brave'
     PORT = 9222
+    DATA_DIR = os.path.expanduser('~/.config/BraveSoftware/Brave-Browser')
+
+    subprocess.run(['pkill', '-f', 'brave'], capture_output=True)
+    time.sleep(1)
 
     proc = subprocess.Popen(
-        [BRAVE, f'--remote-debugging-port={PORT}', '--no-first-run', '--new-window', 'about:blank'],
+        [BRAVE, f'--remote-debugging-port={PORT}', f'--user-data-dir={DATA_DIR}',
+         '--no-first-run', '--new-window', 'about:blank'],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
 
-    for _ in range(30):
+    for _ in range(60):
         try:
             import urllib.request
-            urllib.request.urlopen(f'http://127.0.0.1:{PORT}/json/version', timeout=2)
+            urllib.request.urlopen(f'http://127.0.0.1:{PORT}/json/version', timeout=1)
             break
         except:
             time.sleep(1)

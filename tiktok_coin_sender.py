@@ -41,6 +41,51 @@ user_agents = [
 
 def colored(s, c): return f'{c}{s}{Style.RESET_ALL}'
 
+def jdump(obj, limit=900):
+    try:
+        s = json.dumps(obj, ensure_ascii=False, separators=(',', ':'))
+    except Exception:
+        s = str(obj)
+    if len(s) > limit:
+        return s[:limit] + '...'
+    return s
+
+def pick_room_data(sigi):
+    if not isinstance(sigi, dict):
+        return None
+
+    candidates = []
+    cr = sigi.get('CurrentRoom') or {}
+    lr = sigi.get('LiveRoom') or {}
+    candidates.extend([
+        cr,
+        cr.get('roomInfo') if isinstance(cr.get('roomInfo'), dict) else {},
+        lr,
+        lr.get('roomInfo') if isinstance(lr.get('roomInfo'), dict) else {},
+    ])
+
+    for src in candidates:
+        if not isinstance(src, dict):
+            continue
+        room_id = src.get('roomId') or src.get('room_id') or src.get('id') or ''
+        anchor_id = src.get('anchorId') or src.get('ownerId') or src.get('authorId') or ''
+        name = src.get('anchorUniqueId') or src.get('uniqueId') or src.get('nickname') or src.get('nicknameStr') or ''
+        if room_id or anchor_id or name:
+            return {
+                'roomId': room_id,
+                'anchorId': anchor_id,
+                'name': name,
+                'sourceKeys': list(src.keys())[:30],
+            }
+    return None
+
+def summarize_html(html, limit=40):
+    try:
+        ids = re.findall(r'<script[^>]+id=["\']([^"\']+)["\']', html or '', re.I)
+        return ids[:limit]
+    except Exception:
+        return []
+
 def parse_netscape(fpath):
     c = {}
     with open(fpath, encoding='utf-8', errors='ignore') as f:
@@ -103,9 +148,10 @@ class PlaywrightEngine:
         if not PLAYWRIGHT_AVAILABLE:
             return False
         try:
+            headless = os.environ.get('PW_HEADLESS', '0') == '1'
             self._p = sync_playwright().start()
             self._browser = self._p.chromium.launch(
-                headless=False, args=['--no-sandbox']
+                headless=headless, args=['--no-sandbox']
             )
             self._ctx = self._browser.new_context(
                 user_agent=self._ua,
@@ -118,13 +164,16 @@ class PlaywrightEngine:
             )
             # Wait for byted_acrawler to load
             for _ in range(30):
-                ok = self._sign_page.evaluate('''(function() {
-                    try { return !!(window.byted_acrawler && window.byted_acrawler.frontierSign); }
-                    catch(e) { return false; }
-                })()''')
-                if ok:
-                    self._ready = True
-                    break
+                try:
+                    ok = self._sign_page.evaluate('''(function() {
+                        try { return !!(window.byted_acrawler && window.byted_acrawler.frontierSign); }
+                        catch(e) { return false; }
+                    })()''')
+                    if ok:
+                        self._ready = True
+                        break
+                except Exception:
+                    pass
                 time.sleep(1)
             return self._ready
         except Exception as e:
@@ -153,11 +202,14 @@ class PlaywrightEngine:
         time.sleep(3)
         # Re-check signer
         for _ in range(10):
-            ok = self._sign_page.evaluate('''(function() {
-                try { return !!(window.byted_acrawler && window.byted_acrawler.frontierSign); }
-                catch(e) { return false; }
-            })()''')
-            if ok: break
+            try:
+                ok = self._sign_page.evaluate('''(function() {
+                    try { return !!(window.byted_acrawler && window.byted_acrawler.frontierSign); }
+                    catch(e) { return false; }
+                })()''')
+                if ok: break
+            except Exception:
+                pass
             time.sleep(1)
 
     def get_room_info(self, live_url):
@@ -169,9 +221,18 @@ class PlaywrightEngine:
             for _ in range(20):
                 room = page.evaluate('''(function() {
                     try {
-                        var cr = window.SIGI_STATE && window.SIGI_STATE.CurrentRoom;
-                        if (!cr || !cr.roomId) return null;
-                        return {roomId: cr.roomId, anchorId: cr.anchorId, name: cr.anchorUniqueId};
+                        var s = window.SIGI_STATE || {};
+                        var pick = function(src) {
+                            if (!src) return null;
+                            var roomId = src.roomId || src.room_id || src.id || '';
+                            var anchorId = src.anchorId || src.ownerId || src.authorId || '';
+                            var name = src.anchorUniqueId || src.uniqueId || src.nickname || src.nicknameStr || '';
+                            if (!roomId && !anchorId && !name) return null;
+                            return {roomId: roomId, anchorId: anchorId, name: name, keys: Object.keys(src).slice(0, 30)};
+                        };
+                        var cr = s.CurrentRoom || {};
+                        var lr = s.LiveRoom || {};
+                        return pick(cr) || pick(cr.roomInfo) || pick(lr) || pick(lr.roomInfo);
                     } catch(e) { return null; }
                 })()''')
                 if room and room.get('roomId'):
@@ -180,6 +241,122 @@ class PlaywrightEngine:
             return None
         except:
             return None
+        finally:
+            try: page.close()
+            except: pass
+
+    def debug_room_probe(self, live_url):
+        if not self._ready:
+            return {'ok': False, 'msg': 'engine not ready'}
+        page = self._ctx.new_page()
+        requests_seen = []
+        responses_seen = []
+
+        def on_request(req):
+            if len(requests_seen) < 40:
+                requests_seen.append({
+                    'method': req.method,
+                    'resourceType': req.resource_type,
+                    'url': req.url,
+                })
+
+        def on_response(resp):
+            if len(responses_seen) < 20:
+                responses_seen.append({
+                    'status': resp.status,
+                    'url': resp.url,
+                })
+
+        try:
+            page.on('request', on_request)
+            page.on('response', on_response)
+            page.goto(live_url, wait_until='domcontentloaded', timeout=30000)
+            time.sleep(6)
+            html = ''
+            try:
+                html = page.content()
+            except Exception:
+                html = ''
+            result = page.evaluate('''(function() {
+                try {
+                    var out = {
+                        url: location.href,
+                        title: document.title || '',
+                        hasSigiState: !!window.SIGI_STATE,
+                        sigiKeys: window.SIGI_STATE ? Object.keys(window.SIGI_STATE).slice(0, 20) : [],
+                        currentRoom: null,
+                        liveRoom: null,
+                        roomInfo: null,
+                        universalData: null,
+                        htmlScripts: [],
+                    };
+                    if (window.SIGI_STATE && window.SIGI_STATE.CurrentRoom) {
+                        var cr = window.SIGI_STATE.CurrentRoom;
+                        out.currentRoom = {
+                            roomId: cr.roomId || '',
+                            anchorId: cr.anchorId || '',
+                            anchorUniqueId: cr.anchorUniqueId || '',
+                            liveRoomId: cr.liveRoomId || '',
+                            roomInfo: cr.roomInfo || null,
+                            keys: Object.keys(cr).slice(0, 30),
+                        };
+                        if (cr.roomInfo) {
+                            out.roomInfo = {
+                                keys: Object.keys(cr.roomInfo).slice(0, 20),
+                                roomId: cr.roomInfo.roomId || cr.roomInfo.room_id || '',
+                                ownerId: cr.roomInfo.ownerId || cr.roomInfo.owner_id || '',
+                            };
+                        }
+                    }
+                    if (window.SIGI_STATE && window.SIGI_STATE.LiveRoom) {
+                        var lr = window.SIGI_STATE.LiveRoom;
+                        out.liveRoom = {
+                            roomId: lr.roomId || '',
+                            anchorId: lr.anchorId || '',
+                            anchorUniqueId: lr.anchorUniqueId || '',
+                            liveRoomId: lr.liveRoomId || '',
+                            roomInfo: lr.roomInfo || null,
+                            keys: Object.keys(lr).slice(0, 30),
+                        };
+                    }
+                    // __UNIVERSAL_DATA_FOR_REHYDRATION__
+                    try {
+                        var ud = document.getElementById('__UNIVERSAL_DATA_FOR_REHYDRATION__');
+                        if (ud) {
+                            var d = JSON.parse(ud.textContent);
+                            var scope = d.__DEFAULT_SCOPE__ || {};
+                            var appCtx = scope['webapp.app-context'] || {};
+                            var bizCtx = scope['webapp.biz-context'] || {};
+                            var user = appCtx.user || {};
+                            out.universalData = {
+                                hasCsrf: !!appCtx.csrfToken,
+                                uid: user.uid || '',
+                                uniqueId: user.uniqueId || '',
+                                nickName: user.nickName || '',
+                                hasLivePermission: !!user.hasLivePermission,
+                                userRoomId: user.roomId || '',
+                                region: user.region || '',
+                                appContextKeys: Object.keys(appCtx).slice(0, 20),
+                                bizContextKeys: Object.keys(bizCtx).slice(0, 20),
+                            };
+                        }
+                    } catch(e) { out.universalData = {error: e.message}; }
+
+                    out.htmlScripts = Array.from(document.querySelectorAll('script[id]')).slice(0, 40).map(function(s) {
+                        return s.id;
+                    });
+                    return out;
+                } catch(e) {
+                    return {ok: false, msg: e.message};
+                }
+            })()''')
+            result['html_len'] = len(html)
+            result['html_script_ids'] = summarize_html(html)
+            result['requests'] = requests_seen
+            result['responses'] = responses_seen
+            return result
+        except Exception as e:
+            return {'ok': False, 'msg': str(e)}
         finally:
             try: page.close()
             except: pass
@@ -345,14 +522,74 @@ class CurlEngine:
             m = re.search(r'<script id="SIGI_STATE"[^>]*>({.*?})</script>', html, re.DOTALL)
             if m:
                 sigi = json.loads(m.group(1))
-                cr = sigi.get('CurrentRoom', {})
-                rid = cr.get('roomId', '')
-                aid = cr.get('anchorId', '')
-                if rid and aid:
-                    return {'roomId': rid, 'anchorId': aid, 'name': cr.get('anchorUniqueId')}
+                room = pick_room_data(sigi)
+                if room and room.get('roomId'):
+                    return room
             return None
         except:
             return None
+
+    def debug_room_probe(self, live_url):
+        try:
+            url = XBogus.sign(live_url + '?aid=1988', self._ua)
+            r = self._session.get(url, headers={'User-Agent': self._ua, 'Referer': 'https://www.tiktok.com/'},
+                                    impersonate='chrome120', timeout=15)
+            html = r.text or ''
+            out = {
+                'url': live_url,
+                'final_url': getattr(r, 'url', ''),
+                'status_code': getattr(r, 'status_code', None),
+                'has_sigi_state': 'SIGI_STATE' in html,
+                'current_room_present': 'CurrentRoom' in html,
+                'html_len': len(html),
+            }
+            # __UNIVERSAL_DATA_FOR_REHYDRATION__ from HTML
+            try:
+                um = re.search(r'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>({.*?})</script>', html, re.DOTALL)
+                if um:
+                    ud = json.loads(um.group(1))
+                    scope = ud.get('__DEFAULT_SCOPE__', {})
+                    app_ctx = scope.get('webapp.app-context', {})
+                    user = app_ctx.get('user', {})
+                    out['universal_data'] = {
+                        'has_csrf': bool(app_ctx.get('csrfToken')),
+                        'uid': user.get('uid', ''),
+                        'unique_id': user.get('uniqueId', ''),
+                        'nick_name': user.get('nickName', ''),
+                        'has_live_permission': user.get('hasLivePermission', False),
+                        'user_room_id': user.get('roomId', ''),
+                        'region': user.get('region', ''),
+                    }
+            except Exception as e:
+                out['universal_data_error'] = str(e)
+            m = re.search(r'<script id="SIGI_STATE"[^>]*>({.*?})</script>', html, re.DOTALL)
+            if m:
+                try:
+                    sigi = json.loads(m.group(1))
+                    cr = sigi.get('CurrentRoom', {})
+                    lr = sigi.get('LiveRoom', {})
+                    out['sigi_keys'] = list(sigi.keys())[:20]
+                    out['current_room'] = {
+                        'roomId': cr.get('roomId', ''),
+                        'anchorId': cr.get('anchorId', ''),
+                        'anchorUniqueId': cr.get('anchorUniqueId', ''),
+                        'liveRoomId': cr.get('liveRoomId', ''),
+                        'roomInfo': cr.get('roomInfo', None),
+                        'keys': list(cr.keys())[:30],
+                    }
+                    out['live_room'] = {
+                        'roomId': lr.get('roomId', ''),
+                        'anchorId': lr.get('anchorId', ''),
+                        'anchorUniqueId': lr.get('anchorUniqueId', ''),
+                        'liveRoomId': lr.get('liveRoomId', ''),
+                        'roomInfo': lr.get('roomInfo', None),
+                        'keys': list(lr.keys())[:30],
+                    }
+                except Exception as e:
+                    out['sigi_parse_error'] = str(e)
+            return out
+        except Exception as e:
+            return {'ok': False, 'msg': str(e)}
 
     def send_gift(self, room_id, owner_id, gift_id=1, gift_num=1, live_url=''):
         try:
@@ -383,17 +620,17 @@ class CurlEngine:
 def main():
     print(Fore.CYAN + Style.BRIGHT + '''
   ╔══════════════════════════════════════╗
-  ║     TikTok COIN SENDER v4            ║
+  ║     TikTok COIN SENDER v5            ║
   ║  Playwright + frontierSign + X-Bogus ║
+  ║  --detect-only  --probe-log  --debug ║
   ╚══════════════════════════════════════╝
-          github: n5za
 ''' + Style.RESET_ALL)
 
     args = sys.argv[1:]
     COOKIES_DIR = None; LIVE_URL = None; COINS_TO_SEND = 1; GIFT_NAME = '1'
     NUM_ACCOUNTS = 1; RANDOM = False; LOOP = False; THREADS = 1
     MIN_C = 0; MAX_C = 999999; DELAY = 1.0; WATCH = False; AUTO = False; SAVE = False
-    ENGINE = 'playwright'
+    ENGINE = 'playwright'; DEBUG_ROOM = False; TRACE_NET = False; DETECT_ONLY = False; PROBE_LOG = ''
 
     i = 0
     while i < len(args):
@@ -413,6 +650,10 @@ def main():
         elif a == '--watch': WATCH = True
         elif a == '--auto': AUTO = True
         elif a == '--save-log': SAVE = True
+        elif a == '--debug-room': DEBUG_ROOM = True
+        elif a == '--trace-net': TRACE_NET = True
+        elif a == '--detect-only': DETECT_ONLY = True
+        elif a == '--probe-log' and i+1 < len(args): PROBE_LOG = args[i+1]; i+=1
         elif a == '--curl': ENGINE = 'curl'
         elif a == '--pw': ENGINE = 'playwright'
         elif COOKIES_DIR is None: COOKIES_DIR = a
@@ -463,6 +704,29 @@ def main():
     engine.set_cookies(first_cookies)
     print(colored(f' 🔑 Using @{accs[0]["username"]} ({accs[0]["coins"]} coins)', Fore.CYAN))
 
+    # ─── DETECT-ONLY MODE ────────────────────────────
+    if DETECT_ONLY:
+        if not LIVE_URL or 'tiktok.com' not in LIVE_URL:
+            print(colored(' ❌ --detect-only requires --url <live_url>', Fore.RED))
+            engine.stop(); sys.exit(1)
+        print(colored(f'\n 🔎 [DETECT-ONLY] Probing: {LIVE_URL}', Fore.CYAN))
+        if hasattr(engine, 'debug_room_probe'):
+            probe = engine.debug_room_probe(LIVE_URL)
+            print(colored(f' 🧪 Full probe:', Fore.MAGENTA))
+            print(colored(jdump(probe, 5000), Fore.MAGENTA))
+            if PROBE_LOG:
+                t = datetime.now().strftime('%Y%m%d_%H%M%S')
+                pname = LIVE_URL.split('/@')[-1].split('/')[0] if '/@' in LIVE_URL else 'unknown'
+                os.makedirs(PROBE_LOG, exist_ok=True)
+                pf = os.path.join(PROBE_LOG, f'probe_{pname}_{t}.json')
+                with open(pf, 'w') as f:
+                    json.dump(probe, f, ensure_ascii=False, indent=2)
+                print(colored(f' 💾 Probe saved: {pf}', Fore.GREEN))
+            sys.exit(0)
+        else:
+            print(colored(f' ⚠ debug_room_probe not available', Fore.YELLOW))
+            sys.exit(0)
+
     # Find room
     room_info = None
     if LIVE_URL and 'tiktok.com' in LIVE_URL:
@@ -470,12 +734,25 @@ def main():
         room_info = engine.get_room_info(LIVE_URL)
         if room_info:
             print(colored(f' ✅ Live: @{room_info.get("name","?")} room={room_info["roomId"]}', Fore.GREEN))
+        elif (DEBUG_ROOM or TRACE_NET) and hasattr(engine, 'debug_room_probe'):
+            probe = engine.debug_room_probe(LIVE_URL)
+            print(colored(f' 🧪 room probe: {jdump(probe)}', Fore.MAGENTA))
+            if PROBE_LOG:
+                t = datetime.now().strftime('%Y%m%d_%H%M%S')
+                pname = LIVE_URL.split('/@')[-1].split('/')[0] if '/@' in LIVE_URL else 'unknown'
+                os.makedirs(PROBE_LOG, exist_ok=True)
+                pf = os.path.join(PROBE_LOG, f'probe_{pname}_{t}.json')
+                with open(pf, 'w') as f:
+                    json.dump(probe, f, ensure_ascii=False, indent=2)
+                print(colored(f' 💾 Probe saved: {pf}', Fore.GREEN))
 
     # Search for live if no URL or room offline
     if not room_info:
         print(colored(f' 🔍 Searching for active lives...', Fore.YELLOW))
         recs = engine.get_live_recommendations(30) if hasattr(engine, 'get_live_recommendations') else []
         print(colored(f' 📡 Found {len(recs)} recommendations', Fore.CYAN))
+        if DEBUG_ROOM or TRACE_NET:
+            print(colored(f' 🧪 recommendations sample: {jdump(recs[:5])}', Fore.MAGENTA))
 
         if isinstance(engine, PlaywrightEngine):
             for rec in recs[:10]:
@@ -491,6 +768,9 @@ def main():
                     print(colored(f'✅ {rn}', Fore.GREEN))
                     break
                 print(colored(f'❌', Fore.RED))
+                if (DEBUG_ROOM or TRACE_NET) and hasattr(engine, 'debug_room_probe'):
+                    probe = engine.debug_room_probe(ul)
+                    print(colored(f'    probe: {jdump(probe)}', Fore.MAGENTA))
                 time.sleep(1)
 
     if not room_info:

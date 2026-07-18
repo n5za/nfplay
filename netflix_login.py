@@ -70,11 +70,10 @@ def open_brave(cookies):
             executable_path='/usr/bin/brave',
             args=['--no-first-run'],
         )
-        context.clear_cookies()
-        context.add_cookies(cookies)
         page = context.new_page()
+        page.goto('https://www.netflix.com/')
+        page.context.add_cookies(cookies)
         page.goto('https://www.netflix.com/browse')
-        page.close()
 
 def build_alive_cookies(path):
     nfid, snfid = extract_ids(path)

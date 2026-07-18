@@ -55,19 +55,34 @@ def extract_ids(path):
     return nfid, snfid
 
 def open_brave(cookies):
+    import subprocess, time
     from playwright.sync_api import sync_playwright
+
     BRAVE = '/usr/bin/brave'
+    PORT = 9222
+
+    proc = subprocess.Popen(
+        [BRAVE, f'--remote-debugging-port={PORT}', '--no-first-run', '--new-window', 'about:blank'],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+
+    for _ in range(30):
+        try:
+            import urllib.request
+            urllib.request.urlopen(f'http://127.0.0.1:{PORT}/json/version', timeout=2)
+            break
+        except:
+            time.sleep(1)
+    else:
+        print('  ❌ Brave did not start in time')
+        return
+
     with sync_playwright() as p:
-        browser = p.chromium.launch(
-            executable_path=BRAVE,
-            headless=False,
-            args=['--no-sandbox'],
-        )
-        ctx = browser.new_context()
+        browser = p.chromium.connect_over_cdp(f'http://127.0.0.1:{PORT}')
+        ctx = browser.contexts[0]
         ctx.add_cookies(cookies)
         page = ctx.new_page()
-        page.goto('https://www.netflix.com')
-        page.pause()
+        page.goto('https://www.netflix.com/browse', wait_until='domcontentloaded')
 
 def build_alive_cookies(path):
     nfid, snfid = extract_ids(path)

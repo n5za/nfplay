@@ -131,9 +131,15 @@ def main():
             alive.append(fpath)
             print(Fore.GREEN + f'  ✅ #{len(alive):>2} GOOD  | {label}' + Style.RESET_ALL, flush=True)
         elif status == 'BAD':
-            print(Fore.RED + f'     BAD   | {label}' + Style.RESET_ALL)
+            bad_dir = os.path.join(os.path.dirname(fpath).replace('good_cookies', 'bad_cookies'))
+            os.makedirs(bad_dir, exist_ok=True)
+            shutil.move(fpath, os.path.join(bad_dir, os.path.basename(fpath)))
+            print(Fore.RED + f'     BAD   | {label}  🗑 moved' + Style.RESET_ALL)
         elif status == 'DEAD':
-            print(Fore.YELLOW + f'     DEAD  | {label}' + Style.RESET_ALL)
+            dead_dir = os.path.join(os.path.dirname(fpath).replace('good_cookies', 'dead_cookies'))
+            os.makedirs(dead_dir, exist_ok=True)
+            shutil.move(fpath, os.path.join(dead_dir, os.path.basename(fpath)))
+            print(Fore.YELLOW + f'     DEAD  | {label}  🗑 moved' + Style.RESET_ALL)
         else:
             print(Fore.RED + f'     {status:5s} | {label}' + Style.RESET_ALL)
 

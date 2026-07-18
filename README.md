@@ -1,7 +1,3 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/n5za/nfplay/blob/main/img/image.png">
-  <img src="/img/image.png" alt="nfplay" width="100%">
-</picture>
 
 <br>
 
@@ -14,6 +10,10 @@
 </div>
 
 ---
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/n5za/nfplay/blob/main/img/image.png">
+  <img src="/img/image.png" alt="nfplay" width="100%">
+</picture>
 
 ## Tools
 

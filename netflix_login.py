@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-import os, sys, glob
+import os, sys, glob, shutil, json
 
 COOKIES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'results-password')
 OUTPUT_FILE = os.path.expanduser('~/netflix_current.txt')
 
-def banner():
-    print(r'''
+BANNER = '''
  ███▄    █   █████▒██▓███   ██▓    ▄▄▄     ▓██   ██▓
  ██ ▀█   █ ▓██   ▒▓██░  ██▒▓██▒   ▒████▄    ▒██  ██▒
 ▓██  ▀█ ██▒▒████ ░▓██░ ██▓▒▒██░   ▒██  ▀█▄   ▒██ ██░
@@ -16,23 +15,29 @@ def banner():
    ░   ░ ░  ░ ░   ░░         ░ ░    ░   ▒   ▒ ▒ ░░
          ░                     ░  ░     ░  ░░ ░
                                             ░ ░
-                       Netflix Login''')
+                       Netflix Login'''
 
-def find_cookies():
+FILES_CACHE = None
+
+def find_cookies(force=False):
+    global FILES_CACHE
+    if FILES_CACHE and not force:
+        return FILES_CACHE
     files = []
     for root, dirs, fs in os.walk(COOKIES_DIR):
         if root.endswith('good_cookies'):
             for f in sorted(fs):
                 if f.endswith('.txt'):
                     files.append(os.path.join(root, f))
+    FILES_CACHE = files
     return files
 
 def parse_meta(path):
     name = os.path.basename(path).replace('.txt', '')
-    parts = name.split('] [')
-    email = parts[-1].rstrip(']') if parts else '?'
-    plan = parts[0].lstrip('[') if parts else '?'
-    country = parts[-2] if len(parts) >= 2 else '?'
+    p = name.split('] [')
+    email = p[-1].rstrip(']') if p else '?'
+    plan = p[0].lstrip('[') if p else '?'
+    country = p[-2] if len(p) >= 2 else '?'
     return email, plan, country
 
 def extract_ids(path):
@@ -43,18 +48,44 @@ def extract_ids(path):
             if line.startswith('.netflix.com'):
                 parts = [p.strip() for p in line.split('\t')]
                 if len(parts) >= 7:
-                    name, val = parts[5], parts[6]
-                    if name == 'NetflixId':
-                        nfid = val
-                    elif name == 'SecureNetflixId':
-                        snfid = val
+                    if parts[5] == 'NetflixId':
+                        nfid = parts[6]
+                    elif parts[5] == 'SecureNetflixId':
+                        snfid = parts[6]
     return nfid, snfid
 
+def open_brave(cookies):
+    from playwright.sync_api import sync_playwright
+    BRAVE = '/usr/bin/brave'
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            executable_path=BRAVE,
+            headless=False,
+            args=['--no-sandbox'],
+        )
+        ctx = browser.new_context()
+        ctx.add_cookies(cookies)
+        page = ctx.new_page()
+        page.goto('https://www.netflix.com')
+        page.pause()
+
+def build_alive_cookies(path):
+    nfid, snfid = extract_ids(path)
+    if not nfid:
+        return None
+    email, plan, country = parse_meta(path)
+    return [
+        {'domain': '.netflix.com', 'name': 'NetflixId', 'value': nfid,
+         'path': '/', 'secure': True, 'httpOnly': True, 'sameSite': 'Lax'},
+        {'domain': '.netflix.com', 'name': 'SecureNetflixId', 'value': snfid or '',
+         'path': '/', 'secure': True, 'httpOnly': True, 'sameSite': 'Lax'},
+    ]
+
 def main():
-    banner()
+    print(BANNER)
     files = find_cookies()
     if not files:
-        print('❌ No good_cookies found.')
+        print('\n  ❌ No good_cookies found.')
         sys.exit(1)
 
     print(f'\n  Found {len(files)} accounts\n')
@@ -63,13 +94,18 @@ def main():
         email, plan, country = parse_meta(f)
         print(f'  {i+1:>2}. {email:35s} | {plan:15s} | {country}')
 
-    idx = 0
-    if len(sys.argv) > 1:
+    open_flag = '--open' in sys.argv or '-o' in sys.argv
+    idx = -1
+
+    for arg in sys.argv[1:]:
+        if arg in ('--open', '-o'):
+            continue
         try:
-            idx = int(sys.argv[1]) - 1
+            idx = int(arg) - 1
         except:
             pass
-    else:
+
+    if idx < 0:
         print()
         choice = input('  Select account: ').strip()
         try:
@@ -78,23 +114,29 @@ def main():
             pass
 
     if idx < 0 or idx >= len(files):
-        print('❌ Invalid selection')
+        print('  ❌ Invalid selection')
         sys.exit(1)
 
     selected = files[idx]
     email, plan, country = parse_meta(selected)
-    nfid, snfid = extract_ids(selected)
-
-    import shutil
     shutil.copy2(selected, OUTPUT_FILE)
 
-    print(f'\n✅ Cookie saved → {OUTPUT_FILE}')
+    print(f'\n  ✅ Cookie saved → {OUTPUT_FILE}')
+    nfid, snfid = extract_ids(selected)
     if nfid:
-        print(f'📋 NetflixId:       {nfid}')
+        print(f'  📋 NetflixId:       {nfid[:60]}...')
     if snfid:
-        print(f'📋 SecureNetflixId: {snfid}')
-    print(f'\n   Account: {email}')
-    print(f'   Plan: {plan} | Country: {country}')
+        print(f'  📋 SecureNetflixId: {snfid[:60]}...')
+    print(f'\n     Account: {email}')
+    print(f'     Plan: {plan} | Country: {country}')
+
+    if open_flag:
+        print('\n  🚀 Opening Brave...')
+        cookies = build_alive_cookies(selected)
+        if cookies:
+            open_brave(cookies)
+    else:
+        print('\n  💡 Use --open N to launch in Brave automatically')
 
 if __name__ == '__main__':
     main()

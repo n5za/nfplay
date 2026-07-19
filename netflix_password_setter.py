@@ -86,10 +86,13 @@ def parse_email_pass_file(path):
             line = line.strip()
             if not line or ':' not in line:
                 continue
+            line = line.strip()
+            if '[' in line or '|' in line or line.startswith('–') or line.startswith('-'):
+                continue
             parts = line.split(':', 1)
             email = parts[0].strip()
             password = parts[1].strip()
-            if '@' in email and password:
+            if '@' in email and password and ' ' not in email:
                 accounts.append((email, password))
     return accounts
 
@@ -98,15 +101,20 @@ def collect_accounts(path):
     if os.path.isfile(path):
         files = [path]
     else:
-        files = sorted(glob.glob(os.path.join(path, '*.txt')))
+        files = sorted(glob.glob(os.path.join(path, '**', '*.txt'), recursive=True))
     cookie_accounts = []
     email_pass_accounts = []
     for f in files:
+        if not os.path.isfile(f):
+            continue
         content = open(f, 'r', errors='ignore').read(4096)
         if re.search(r'(?:NetflixId|SecureNetflixId)', content):
             email, nfid, snfid = parse_cookie_file(f)
             cookie_accounts.append((email, nfid, snfid, f))
         elif re.search(r'@.*:', content):
+            bname = os.path.basename(f)
+            if bname in ('good_no_password.txt', 'bad_has_password.txt', 'dead.txt'):
+                continue
             ep = parse_email_pass_file(f)
             email_pass_accounts.extend(ep)
     return cookie_accounts, email_pass_accounts
@@ -323,11 +331,16 @@ def main():
         i += 1
 
     if not input_path:
-        print(Fore.CYAN + '\n  Enter cookies folder or file path:' + Style.RESET_ALL)
-        input_path = input(Fore.YELLOW + '  > ' + Style.RESET_ALL).strip()
-        if not input_path:
-            print(Fore.RED + '  No path provided.' + Style.RESET_ALL)
-            sys.exit(1)
+        results_dir = os.path.join(BASE_DIR, 'data', 'results-password')
+        if os.path.isdir(results_dir):
+            input_path = results_dir
+            print(Fore.CYAN + f'\n  Auto-using checker results: {results_dir}' + Style.RESET_ALL)
+        else:
+            print(Fore.CYAN + '\n  Enter cookies folder or file path:' + Style.RESET_ALL)
+            input_path = input(Fore.YELLOW + '  > ' + Style.RESET_ALL).strip()
+            if not input_path:
+                print(Fore.RED + '  No path provided.' + Style.RESET_ALL)
+                sys.exit(1)
 
     if not os.path.exists(input_path):
         print(Fore.RED + f'  Path not found: {input_path}' + Style.RESET_ALL)
